@@ -1,0 +1,55 @@
+{
+  "name": "nebula-siege",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Nebula Siege - a 3D omnidirectional space defense game built with Electron, Vanilla JS, Three.js, and the Web Audio API.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "web": "npx serve . --listen 8080",
+    "dev": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "keywords": [
+    "electron",
+    "three.js",
+    "webgl",
+    "space-game",
+    "browser-game",
+    "vanilla-js",
+    "web-audio",
+    "portfolio"
+  ],
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {
+    "electron": "^36.0.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.nebulasiege.game",
+    "productName": "Nebula Siege",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "index.html",
+      "main.js",
+      "preload.js",
+      "README.md",
+      "LICENSE",
+      ".gitignore"
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
