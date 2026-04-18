@@ -376,8 +376,8 @@
           emissive: 0x8f2d36,
           score: 10,
           damage: 10,
-          radius: 1.9,
-          scale: 1.18,
+          radius: 2.2,
+          scale: 1.42,
           tendrils: 5,
           spikes: 6,
         },
@@ -388,8 +388,8 @@
           emissive: 0x9a4058,
           score: 20,
           damage: 6,
-          radius: 1.2,
-          scale: 0.9,
+          radius: 1.5,
+          scale: 1.12,
           tendrils: 4,
           spikes: 4,
         },
@@ -400,8 +400,8 @@
           emissive: 0x874346,
           score: 50,
           damage: 24,
-          radius: 3.1,
-          scale: 1.78,
+          radius: 3.45,
+          scale: 2.02,
           tendrils: 8,
           spikes: 10,
         },
@@ -464,6 +464,13 @@
           roughness: 0.38,
           metalness: 0.12,
         });
+        const innerMouth = new THREE.MeshStandardMaterial({
+          color: 0x2e0508,
+          emissive: 0x5f1018,
+          emissiveIntensity: 0.45,
+          roughness: 0.9,
+          metalness: 0.02,
+        });
 
         this._flashMaterials.push(skin, horn);
 
@@ -474,15 +481,24 @@
         this.body = body;
 
         const jawRoot = new THREE.Group();
-        jawRoot.position.set(0.03 * scale, -0.08 * scale, 1.32 * scale);
+        jawRoot.position.set(0.03 * scale, -0.03 * scale, 1.28 * scale);
         const upperJaw = new THREE.Mesh(Enemy._warpGeometry(new THREE.ConeGeometry(0.5 * scale, 0.95 * scale, 6), 0.12), horn);
         upperJaw.rotation.x = Math.PI / 2;
-        upperJaw.position.y = 0.2 * scale;
+        upperJaw.position.y = 0.18 * scale;
         jawRoot.add(upperJaw);
         const lowerJaw = new THREE.Mesh(Enemy._warpGeometry(new THREE.ConeGeometry(0.42 * scale, 0.8 * scale, 6), 0.08), horn);
         lowerJaw.rotation.x = Math.PI / 2;
-        lowerJaw.position.y = -0.22 * scale;
+        lowerJaw.position.y = -0.18 * scale;
         jawRoot.add(lowerJaw);
+
+        const throat = new THREE.Mesh(new THREE.SphereGeometry(0.25 * scale, 8, 8), innerMouth);
+        throat.scale.set(1.1, 0.85, 1.6);
+        throat.position.set(0, -0.02 * scale, 0.36 * scale);
+        jawRoot.add(throat);
+
+        this.upperJaw = upperJaw;
+        this.lowerJaw = lowerJaw;
+        this.throat = throat;
         this.mesh.add(jawRoot);
         this.jawRoot = jawRoot;
 
@@ -494,11 +510,19 @@
           this.mesh.add(tooth);
         }
 
-        const eyeLeft = new THREE.Mesh(new THREE.SphereGeometry(0.1 * scale, 10, 10), new THREE.MeshBasicMaterial({ color: 0xffd7dc }));
-        const eyeRight = eyeLeft.clone();
-        eyeLeft.position.set(-0.22 * scale, 0.15 * scale, 0.88 * scale);
-        eyeRight.position.set(0.22 * scale, 0.15 * scale, 0.88 * scale);
+        const eyeLeft = new THREE.Mesh(new THREE.SphereGeometry(0.12 * scale, 10, 10), new THREE.MeshBasicMaterial({ color: 0xffdde1 }));
+        const eyeRight = new THREE.Mesh(new THREE.SphereGeometry(0.12 * scale, 10, 10), new THREE.MeshBasicMaterial({ color: 0xffdde1 }));
+        eyeLeft.position.set(-0.3 * scale, 0.15 * scale, 0.88 * scale);
+        eyeRight.position.set(0.3 * scale, 0.15 * scale, 0.88 * scale);
         this.mesh.add(eyeLeft, eyeRight);
+        const eyeLightL = new THREE.PointLight(0xff8ca0, 0.9, 4.4 * scale);
+        const eyeLightR = new THREE.PointLight(0xff8ca0, 0.9, 4.4 * scale);
+        eyeLightL.position.copy(eyeLeft.position);
+        eyeLightR.position.copy(eyeRight.position);
+        this.mesh.add(eyeLightL, eyeLightR);
+
+        this.eyeLeft = eyeLeft;
+        this.eyeRight = eyeRight;
 
         for (let index = 0; index < this.config.tendrils; index += 1) {
           const tendrilRoot = new THREE.Group();
@@ -550,7 +574,13 @@
         const t = performance.now() * 0.001 + this.seed;
         const pulse = 1 + Math.sin(t * 2.6) * 0.05;
         this.body.scale.set(1.08 * pulse, 0.82 + Math.sin(t * 2.2) * 0.03, 1.42 * pulse);
-        this.jawRoot.rotation.x = -0.18 + Math.sin(t * 5.1) * 0.16;
+        const jawOpen = 0.34 + Math.sin(t * 4.8) * 0.26;
+        this.upperJaw.rotation.x = Math.PI / 2 - jawOpen * 0.55;
+        this.lowerJaw.rotation.x = Math.PI / 2 + jawOpen;
+        this.throat.scale.z = 1.45 + jawOpen * 1.1;
+        this.jawRoot.rotation.x = -0.04 + Math.sin(t * 2.3) * 0.06;
+        this.eyeLeft.scale.setScalar(0.9 + Math.sin(t * 8.5) * 0.1);
+        this.eyeRight.scale.setScalar(0.9 + Math.cos(t * 8.5) * 0.1);
         for (let index = 0; index < this._animNodes.length; index += 1) {
           const a = this._animNodes[index];
           a.node.rotation.z += Math.sin(t * 4 + a.offset) * a.amp * dt;
@@ -599,18 +629,83 @@
     class PlayerShip {
       constructor(scene) {
         this.scene = scene; this.maxShields = 100; this.shields = this.maxShields; this.fireCooldown = 0; this.fireRate = CONFIG.fireCooldown; this.group = new THREE.Group();
-        const hullMaterial = new THREE.MeshStandardMaterial({ color: 0x3c6eff, emissive: 0x0c2d88, emissiveIntensity: 0.32, metalness: 0.88, roughness: 0.12 });
-        const fuselage = new THREE.Mesh(new THREE.ConeGeometry(0.72, 3.1, 7), hullMaterial); fuselage.rotation.x = -Math.PI / 2; this.group.add(fuselage);
-        const wingMaterial = new THREE.MeshStandardMaterial({ color: 0x2743c6, emissive: 0x081566, emissiveIntensity: 0.24, metalness: 0.94, roughness: 0.18 });
-        const wing = new THREE.Mesh(new THREE.BoxGeometry(3.8, 0.13, 1.55), wingMaterial); wing.position.z = 0.72; this.group.add(wing);
-        this.engineGlow = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 10), new THREE.MeshBasicMaterial({ color: 0x69f7ff })); this.engineGlow.position.z = 1.7; this.group.add(this.engineGlow);
-        this.engineLight = new THREE.PointLight(0x56d8ff, 1.6, 18); this.engineLight.position.z = 1.7; this.group.add(this.engineLight);
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0x2f89b8, emissive: 0x0b3458, emissiveIntensity: 0.24, metalness: 0.84, roughness: 0.16 });
+        const panelMat = new THREE.MeshStandardMaterial({ color: 0x1f4a66, emissive: 0x0a2038, emissiveIntensity: 0.16, metalness: 0.9, roughness: 0.2 });
+        const accentMat = new THREE.MeshStandardMaterial({ color: 0xf6bc37, emissive: 0x7f4f07, emissiveIntensity: 0.2, metalness: 0.55, roughness: 0.3 });
+        const cockpitMat = new THREE.MeshStandardMaterial({ color: 0x7fc6df, emissive: 0x13445b, emissiveIntensity: 0.36, metalness: 0.5, roughness: 0.08, transparent: true, opacity: 0.92 });
+
+        const centerBody = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.78, 3.7), bodyMat);
+        centerBody.position.z = 0.25;
+        this.group.add(centerBody);
+
+        const nose = new THREE.Mesh(new THREE.ConeGeometry(0.44, 1.35, 6), bodyMat);
+        nose.rotation.x = -Math.PI / 2;
+        nose.position.z = -1.85;
+        this.group.add(nose);
+
+        const cockpit = new THREE.Mesh(new THREE.CapsuleGeometry(0.33, 0.55, 5, 10), cockpitMat);
+        cockpit.rotation.x = Math.PI / 2;
+        cockpit.position.set(0, 0.35, -0.25);
+        this.group.add(cockpit);
+
+        const bellyFin = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.12, 1.3), panelMat);
+        bellyFin.position.set(0, -0.38, 0.8);
+        this.group.add(bellyFin);
+
+        const wingL = new THREE.Mesh(new THREE.BoxGeometry(1.55, 0.16, 2.25), bodyMat);
+        const wingR = wingL.clone();
+        wingL.position.set(-1.22, -0.05, 0.7);
+        wingR.position.set(1.22, -0.05, 0.7);
+        this.group.add(wingL, wingR);
+
+        const podL = new THREE.Mesh(new THREE.BoxGeometry(0.88, 0.72, 2.2), panelMat);
+        const podR = podL.clone();
+        podL.position.set(-1.7, 0.08, 0.15);
+        podR.position.set(1.7, 0.08, 0.15);
+        this.group.add(podL, podR);
+
+        const podNoseL = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.75, 6), panelMat);
+        const podNoseR = podNoseL.clone();
+        podNoseL.rotation.x = -Math.PI / 2;
+        podNoseR.rotation.x = -Math.PI / 2;
+        podNoseL.position.set(-1.7, 0.08, -1.22);
+        podNoseR.position.set(1.7, 0.08, -1.22);
+        this.group.add(podNoseL, podNoseR);
+
+        const stripeL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.02, 1.5), accentMat);
+        const stripeR = stripeL.clone();
+        stripeL.position.set(-1.26, 0.32, 0.38);
+        stripeR.position.set(1.26, 0.32, 0.38);
+        this.group.add(stripeL, stripeR);
+
+        const wingTipL = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.18, 0.72), accentMat);
+        const wingTipR = wingTipL.clone();
+        wingTipL.position.set(-2.35, -0.08, 1.45);
+        wingTipR.position.set(2.35, -0.08, 1.45);
+        this.group.add(wingTipL, wingTipR);
+
+        this.engineGlow = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 10), new THREE.MeshBasicMaterial({ color: 0x69f7ff }));
+        this.engineGlow.position.z = 2.03;
+        this.group.add(this.engineGlow);
+
+        this.sideEngineGlowL = new THREE.Mesh(new THREE.SphereGeometry(0.2, 8, 8), new THREE.MeshBasicMaterial({ color: 0x57d9ff }));
+        this.sideEngineGlowR = this.sideEngineGlowL.clone();
+        this.sideEngineGlowL.position.set(-1.7, 0.05, 1.43);
+        this.sideEngineGlowR.position.set(1.7, 0.05, 1.43);
+        this.group.add(this.sideEngineGlowL, this.sideEngineGlowR);
+
+        this.engineLight = new THREE.PointLight(0x56d8ff, 1.8, 20);
+        this.engineLight.position.z = 1.95;
+        this.group.add(this.engineLight);
         scene.add(this.group);
       }
       reset() { this.shields = this.maxShields; this.fireCooldown = 0; }
       update(dt, camera, particles) {
         const offset = tempVec3A.set(0, -1.1, -5.9).applyQuaternion(camera.quaternion); this.group.position.copy(camera.position).add(offset); this.group.quaternion.copy(camera.quaternion);
         const enginePulse = 0.84 + Math.sin(performance.now() * 0.012) * 0.16; this.engineGlow.scale.setScalar(enginePulse); this.engineLight.intensity = 1.1 + enginePulse;
+        const sidePulse = 0.86 + Math.cos(performance.now() * 0.015) * 0.16;
+        this.sideEngineGlowL.scale.setScalar(sidePulse);
+        this.sideEngineGlowR.scale.setScalar(sidePulse);
         if (this.fireCooldown > 0) this.fireCooldown -= dt;
         if (this.shields < this.maxShields) this.shields = Math.min(this.maxShields, this.shields + dt * 3.8);
         if (particles && dt > 0) { const trail = tempVec3B.set(0, 0, 1.45).applyQuaternion(camera.quaternion).add(camera.position); if (Math.random() < 0.5) particles.burst(trail, 0x69f7ff, 1, 2.2, 0.35); }
@@ -621,7 +716,7 @@
         this.fireCooldown = this.fireRate;
         const forward = tempVec3A.set(0, 0, -1).applyQuaternion(camera.quaternion);
         const right = tempVec3B.set(1, 0, 0).applyQuaternion(camera.quaternion);
-        const base = camera.position.clone().addScaledVector(forward, 3); const spread = right.multiplyScalar(0.35);
+        const base = camera.position.clone().addScaledVector(forward, 3); const spread = right.multiplyScalar(0.56);
         return [new Bullet(scene, base.clone().add(spread), forward), new Bullet(scene, base.clone().sub(spread), forward)];
       }
       takeDamage(amount) { this.shields = Math.max(0, this.shields - amount); return this.shields === 0; }
