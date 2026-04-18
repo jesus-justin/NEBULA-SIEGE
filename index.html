@@ -369,33 +369,219 @@
 
     class Enemy {
       static TYPES = Object.freeze({
-        basic: { hp: 2, speed: 11, color: 0xff5140, emissive: 0xff2817, score: 10, damage: 10, radius: 1.9, geometry: () => new THREE.IcosahedronGeometry(1.45) },
-        fast: { hp: 1, speed: 24, color: 0xc85aff, emissive: 0xa433ff, score: 20, damage: 6, radius: 1.2, geometry: () => new THREE.TetrahedronGeometry(1.0) },
-        heavy: { hp: 6, speed: 6, color: 0x5fe5ff, emissive: 0x1fa7ff, score: 50, damage: 24, radius: 3.1, geometry: () => new THREE.DodecahedronGeometry(2.2) },
+        basic: {
+          hp: 2,
+          speed: 11,
+          color: 0xd5b8b8,
+          emissive: 0x8f2d36,
+          score: 10,
+          damage: 10,
+          radius: 1.9,
+          scale: 1.18,
+          tendrils: 5,
+          spikes: 6,
+        },
+        fast: {
+          hp: 1,
+          speed: 24,
+          color: 0xe0c0c8,
+          emissive: 0x9a4058,
+          score: 20,
+          damage: 6,
+          radius: 1.2,
+          scale: 0.9,
+          tendrils: 4,
+          spikes: 4,
+        },
+        heavy: {
+          hp: 6,
+          speed: 6,
+          color: 0xcbb9b3,
+          emissive: 0x874346,
+          score: 50,
+          damage: 24,
+          radius: 3.1,
+          scale: 1.78,
+          tendrils: 8,
+          spikes: 10,
+        },
       });
-      constructor(scene, position, type) {
-        this.scene = scene; this.type = type; this.alive = true; this.config = Enemy.TYPES[type]; this.hp = this.config.hp; this.speed = this.config.speed; this.score = this.config.score; this.damage = this.config.damage;
-        this.mesh = new THREE.Mesh(this.config.geometry(), new THREE.MeshStandardMaterial({ color: this.config.color, emissive: this.config.emissive, emissiveIntensity: 0.72, metalness: 0.8, roughness: 0.16 }));
-        this.mesh.position.copy(position);
-        if (type === "heavy") { this.ring = new THREE.Mesh(new THREE.TorusGeometry(3.3, 0.16, 10, 48), new THREE.MeshBasicMaterial({ color: this.config.emissive })); this.mesh.add(this.ring); }
-        this.mesh.add(new THREE.PointLight(this.config.emissive, 1.7, 26)); scene.add(this.mesh);
+
+      static _warpGeometry(geometry, amount = 0.12) {
+        geometry.computeVertexNormals();
+        const position = geometry.attributes.position;
+        const normal = geometry.attributes.normal;
+        for (let index = 0; index < position.count; index += 1) {
+          const nx = normal.getX(index);
+          const ny = normal.getY(index);
+          const nz = normal.getZ(index);
+          const wobble = (Math.random() - 0.5) * amount;
+          position.setXYZ(
+            index,
+            position.getX(index) + nx * wobble,
+            position.getY(index) + ny * wobble,
+            position.getZ(index) + nz * wobble,
+          );
+        }
+        position.needsUpdate = true;
+        geometry.computeVertexNormals();
+        return geometry;
       }
+
+      constructor(scene, position, type) {
+        this.scene = scene;
+        this.type = type;
+        this.alive = true;
+        this.config = Enemy.TYPES[type];
+        this.hp = this.config.hp;
+        this.speed = this.config.speed;
+        this.score = this.config.score;
+        this.damage = this.config.damage;
+        this.seed = Math.random() * Math.PI * 2;
+
+        this.mesh = new THREE.Group();
+        this.mesh.position.copy(position);
+
+        this._animNodes = [];
+        this._flashMaterials = [];
+
+        const skin = new THREE.MeshStandardMaterial({
+          color: this.config.color,
+          roughness: 0.84,
+          metalness: 0.04,
+          emissive: this.config.emissive,
+          emissiveIntensity: 0.22,
+        });
+        const horn = new THREE.MeshStandardMaterial({
+          color: 0x8a5e66,
+          roughness: 0.62,
+          metalness: 0.06,
+          emissive: this.config.emissive,
+          emissiveIntensity: 0.14,
+        });
+        const fang = new THREE.MeshStandardMaterial({
+          color: 0x6f4d56,
+          roughness: 0.38,
+          metalness: 0.12,
+        });
+
+        this._flashMaterials.push(skin, horn);
+
+        const scale = this.config.scale;
+        const body = new THREE.Mesh(Enemy._warpGeometry(new THREE.IcosahedronGeometry(1.08 * scale, 2), 0.18), skin);
+        body.scale.set(1.08, 0.82, 1.42);
+        this.mesh.add(body);
+        this.body = body;
+
+        const jawRoot = new THREE.Group();
+        jawRoot.position.set(0.03 * scale, -0.08 * scale, 1.32 * scale);
+        const upperJaw = new THREE.Mesh(Enemy._warpGeometry(new THREE.ConeGeometry(0.5 * scale, 0.95 * scale, 6), 0.12), horn);
+        upperJaw.rotation.x = Math.PI / 2;
+        upperJaw.position.y = 0.2 * scale;
+        jawRoot.add(upperJaw);
+        const lowerJaw = new THREE.Mesh(Enemy._warpGeometry(new THREE.ConeGeometry(0.42 * scale, 0.8 * scale, 6), 0.08), horn);
+        lowerJaw.rotation.x = Math.PI / 2;
+        lowerJaw.position.y = -0.22 * scale;
+        jawRoot.add(lowerJaw);
+        this.mesh.add(jawRoot);
+        this.jawRoot = jawRoot;
+
+        for (let index = 0; index < 6; index += 1) {
+          const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.08 * scale, 0.32 * scale, 5), fang);
+          const angle = (index / 6) * Math.PI * 2;
+          tooth.position.set(Math.cos(angle) * 0.34 * scale, Math.sin(angle) * 0.2 * scale, 1.58 * scale);
+          tooth.lookAt(tooth.position.clone().multiplyScalar(1.8));
+          this.mesh.add(tooth);
+        }
+
+        const eyeLeft = new THREE.Mesh(new THREE.SphereGeometry(0.1 * scale, 10, 10), new THREE.MeshBasicMaterial({ color: 0xffd7dc }));
+        const eyeRight = eyeLeft.clone();
+        eyeLeft.position.set(-0.22 * scale, 0.15 * scale, 0.88 * scale);
+        eyeRight.position.set(0.22 * scale, 0.15 * scale, 0.88 * scale);
+        this.mesh.add(eyeLeft, eyeRight);
+
+        for (let index = 0; index < this.config.tendrils; index += 1) {
+          const tendrilRoot = new THREE.Group();
+          const rootAngle = (index / this.config.tendrils) * Math.PI * 2;
+          const rootLift = (Math.random() - 0.5) * 0.55;
+          tendrilRoot.position.set(Math.cos(rootAngle) * 0.56 * scale, rootLift * scale, Math.sin(rootAngle) * 0.56 * scale - 0.22 * scale);
+          tendrilRoot.rotation.y = rootAngle + (Math.random() - 0.5) * 0.5;
+          tendrilRoot.rotation.x = -0.45 + (Math.random() - 0.5) * 0.45;
+
+          const tendril = new THREE.Mesh(Enemy._warpGeometry(new THREE.CylinderGeometry(0.12 * scale, 0.06 * scale, (0.95 + Math.random() * 0.8) * scale, 7), 0.16), skin);
+          tendril.position.y = -0.5 * tendril.geometry.parameters.height;
+          tendrilRoot.add(tendril);
+
+          const claw = new THREE.Mesh(new THREE.ConeGeometry(0.07 * scale, 0.3 * scale, 6), horn);
+          claw.position.y = -tendril.geometry.parameters.height - 0.08 * scale;
+          tendrilRoot.add(claw);
+
+          this._animNodes.push({ node: tendrilRoot, offset: Math.random() * Math.PI * 2, amp: 0.16 + Math.random() * 0.1 });
+          this.mesh.add(tendrilRoot);
+        }
+
+        for (let index = 0; index < this.config.spikes; index += 1) {
+          const spike = new THREE.Mesh(new THREE.ConeGeometry(0.1 * scale, (0.35 + Math.random() * 0.45) * scale, 6), horn);
+          const direction = new THREE.Vector3(
+            Math.random() - 0.5,
+            Math.random() - 0.5,
+            Math.random() - 0.5,
+          ).normalize();
+          spike.position.copy(direction.clone().multiplyScalar(0.95 * scale));
+          spike.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+          this.mesh.add(spike);
+        }
+
+        if (type === "heavy") {
+          const crest = new THREE.Mesh(Enemy._warpGeometry(new THREE.TorusGeometry(1.85 * scale, 0.12 * scale, 10, 28), 0.08), horn);
+          crest.rotation.x = Math.PI / 2;
+          crest.position.z = -0.1 * scale;
+          this.mesh.add(crest);
+          this._animNodes.push({ node: crest, offset: this.seed, amp: 0.08 });
+        }
+
+        this.mesh.add(new THREE.PointLight(this.config.emissive, 1.4 + scale * 0.28, 18 + scale * 12));
+        scene.add(this.mesh);
+      }
+
       update(dt) {
         if (!this.alive) return;
+
+        const t = performance.now() * 0.001 + this.seed;
+        const pulse = 1 + Math.sin(t * 2.6) * 0.05;
+        this.body.scale.set(1.08 * pulse, 0.82 + Math.sin(t * 2.2) * 0.03, 1.42 * pulse);
+        this.jawRoot.rotation.x = -0.18 + Math.sin(t * 5.1) * 0.16;
+        for (let index = 0; index < this._animNodes.length; index += 1) {
+          const a = this._animNodes[index];
+          a.node.rotation.z += Math.sin(t * 4 + a.offset) * a.amp * dt;
+          a.node.rotation.x += Math.cos(t * 3.2 + a.offset) * a.amp * dt * 0.7;
+        }
+
         const toOrigin = tempVec3A.copy(this.mesh.position).negate().normalize();
         const strafe = tempVec3B.set(Math.sin(performance.now() * 0.001 + this.mesh.position.x * 0.01), Math.cos(performance.now() * 0.0011 + this.mesh.position.y * 0.01), Math.sin(performance.now() * 0.0009 + this.mesh.position.z * 0.01)).multiplyScalar(this.type === "fast" ? 0.38 : 0.16);
         this.mesh.position.addScaledVector(toOrigin.add(strafe), this.speed * dt);
-        this.mesh.rotation.x += dt * (this.type === "fast" ? 4 : 1.2); this.mesh.rotation.y += dt * (this.type === "fast" ? 3 : 0.9); this.mesh.rotation.z += dt * 0.7;
-        if (this.ring) this.ring.rotation.y += dt * 2.4;
+        this.mesh.rotation.x += dt * (this.type === "fast" ? 2.6 : 0.9);
+        this.mesh.rotation.y += dt * (this.type === "fast" ? 2.1 : 0.7);
+        this.mesh.rotation.z += dt * 0.5;
       }
+
       takeDamage(amount) {
         if (!this.alive) return false;
-        this.hp -= amount; this.mesh.material.emissiveIntensity = 2.5;
-        window.setTimeout(() => { if (this.mesh && this.mesh.material) this.mesh.material.emissiveIntensity = 0.72; }, 70);
+        this.hp -= amount;
+        for (let index = 0; index < this._flashMaterials.length; index += 1) {
+          this._flashMaterials[index].emissiveIntensity = 1.1;
+        }
+        window.setTimeout(() => {
+          for (let index = 0; index < this._flashMaterials.length; index += 1) {
+            this._flashMaterials[index].emissiveIntensity = index === 0 ? 0.22 : 0.14;
+          }
+        }, 90);
         if (this.hp <= 0) { this.kill(); return true; }
         return false;
       }
+
       kill() { this.alive = false; this.scene.remove(this.mesh); }
+
       get radius() { return this.config.radius; }
     }
 
